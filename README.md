@@ -5,7 +5,7 @@ Add and remove pre and post middleware hooks to class methods on a per class ins
 ## How To Use
 
 ```typescript
-import { Hooks, Hook, HookAsync hasHooks } from 'hook-decorator-middleware'
+import { Hooks, Hook, HookAsync hasHooks } from 'hook-middleware-decorators'
 
 @Hooks()
 class ClassWithHooks {
