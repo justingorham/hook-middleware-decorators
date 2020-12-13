@@ -1,10 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-empty-function */
-import { hasHooks, Hook, HookAsync, Hooks } from './hooks';
+import { hasHooks, Hook, HookAsync, Hooks, HooksConfiguration } from './hooks';
+
+const config: Partial<HooksConfiguration> = {
+  logPostFunctionErrors: false,
+};
 
 describe('Hooks', () => {
   describe('hasHooks', () => {
     it('should be true for class with decorator', () => {
-      @Hooks()
+      @Hooks(config)
       class AClassWithHooks {}
       const instance = new AClassWithHooks();
 
@@ -20,7 +25,7 @@ describe('Hooks', () => {
   });
 
   describe('IHooksRegistration<T>', () => {
-    @Hooks()
+    @Hooks(config)
     class AClassWithHooks {
       async helloAsync(person: string) {
         return `Hello ${person}`;
@@ -53,7 +58,7 @@ describe('Hooks', () => {
   });
 
   describe('HookAsync', () => {
-    @Hooks()
+    @Hooks(config)
     class AClassWithHooks {
       @HookAsync()
       async hello(person: string) {
@@ -61,11 +66,15 @@ describe('Hooks', () => {
       }
     }
 
-    it('should call pre and post async hooks', async () => {
+    it('should call pre, post, around async hooks', async () => {
       const instance = new AClassWithHooks();
-      const pre = jest.fn().mockResolvedValue(undefined);
-      const post = jest.fn().mockResolvedValue(undefined);
+      const pre = jest.fn();
+      const post = jest.fn();
+      const around = jest.fn(async (fn, ...args) => {
+        return await fn(...args);
+      });
       if (hasHooks<AClassWithHooks>(instance)) {
+        instance.around('hello', around);
         instance.pre('hello', pre);
         instance.post('hello', post);
       }
@@ -73,13 +82,18 @@ describe('Hooks', () => {
       expect(message).toEqual('Hello world');
       expect(pre).toHaveBeenCalledWith('world');
       expect(post).toHaveBeenCalledWith('Hello world', 'world');
+      expect(around).toHaveBeenCalled();
     });
 
-    it('should call pre and post sync hooks', async () => {
+    it('should call pre, post, and around sync hooks', async () => {
       const instance = new AClassWithHooks();
-      const pre = jest.fn().mockReturnValue(undefined);
-      const post = jest.fn().mockReturnValue(undefined);
+      const pre = jest.fn();
+      const post = jest.fn();
+      const around = jest.fn((fn, ...args) => {
+        return fn(...args);
+      });
       if (hasHooks<AClassWithHooks>(instance)) {
+        instance.around('hello', around);
         instance.pre('hello', pre);
         instance.post('hello', post);
       }
@@ -87,6 +101,7 @@ describe('Hooks', () => {
       expect(message).toEqual('Hello world');
       expect(pre).toHaveBeenCalledWith('world');
       expect(post).toHaveBeenCalledWith('Hello world', 'world');
+      expect(around).toHaveBeenCalled();
     });
 
     it('should throw error when pre hook throws error sync', async () => {
@@ -151,7 +166,7 @@ describe('Hooks', () => {
   });
 
   describe('Hook', () => {
-    @Hooks()
+    @Hooks(config)
     class AClassWithHooks {
       @Hook()
       hello(person: string) {
@@ -205,7 +220,7 @@ describe('Hooks', () => {
   });
 
   describe('Unsubscribe', () => {
-    @Hooks()
+    @Hooks(config)
     class ClassWithHooks {
       @Hook()
       hello(person: string) {

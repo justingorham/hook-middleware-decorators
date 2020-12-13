@@ -4,8 +4,7 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const HooksConfigurationSymbol = Symbol.for('HooksConfiguration');
-const PreCollectionSymbol = Symbol.for('PreCollection');
-const PostCollectionSymbol = Symbol.for('PostCollection');
+const HooksCollectionSymbol = Symbol.for('HooksCollection');
 
 export type PreHook<T> = T extends (...args: any[]) => any
   ? (...params: Parameters<T>) => any
@@ -17,9 +16,13 @@ export type PostHook<T> = T extends (...args: any[]) => Promise<infer U>
   ? (returnVal: ReturnType<T>, ...args: Parameters<T>) => any
   : never;
 
+export type AroundHook<T> = T extends (...args: any[]) => any
+  ? (func: T, ...args: Parameters<T>) => ReturnType<T>
+  : never;
+
 export type UnregisterFunc = () => void;
 
-type NonHookProps<T> = Omit<T, 'pre' | 'post'>;
+type NonHookProps<T> = Omit<T, 'pre' | 'post' | 'around'>;
 
 export interface IHooksRegistration<T> {
   pre<TKey extends keyof NonHookProps<T>>(
@@ -31,21 +34,31 @@ export interface IHooksRegistration<T> {
     p: TKey,
     func: PostHook<T[TKey]>
   ): UnregisterFunc;
+
+  around<TKey extends keyof NonHookProps<T>>(
+    p: TKey,
+    func: AroundHook<T[TKey]>
+  ): UnregisterFunc;
+}
+
+interface IHookInstance {
+  type: 'pre' | 'post' | 'around';
+  func: (...args: any[]) => any;
 }
 
 type HookCollection<T> = {
-  [k in keyof NonHookProps<T>]?: ((...args: any[]) => any)[];
+  [k in keyof NonHookProps<T>]?: IHookInstance[];
 };
 
 interface IHooks<T> extends IHooksRegistration<T> {
-  [PreCollectionSymbol]: HookCollection<T>;
-  [PostCollectionSymbol]: HookCollection<T>;
+  [HooksCollectionSymbol]: HookCollection<T>;
   [HooksConfigurationSymbol]: HooksConfiguration;
 }
 
 export interface HooksConfiguration {
   logPostFunctionErrors: boolean;
   logger: (...args: any[]) => void;
+  reduce: 'left' | 'right';
 }
 
 const defaultHooksConfiguration: HooksConfiguration = {
@@ -53,31 +66,35 @@ const defaultHooksConfiguration: HooksConfiguration = {
   logger: (...args: any[]) => {
     console.error(...args);
   },
+  reduce: 'right',
 };
 
 export function Hooks(config?: Partial<HooksConfiguration>) {
-  return function <T extends { new (...args: any[]): {} }>(constructor: T) {
+  return function<T extends { new (...args: any[]): {} }>(constructor: T) {
     return class extends constructor implements IHooks<T> {
       readonly [HooksConfigurationSymbol]: HooksConfiguration = {
         ...defaultHooksConfiguration,
         ...config,
       };
-      [PreCollectionSymbol]: HookCollection<T> = {};
-      [PostCollectionSymbol]: HookCollection<T> = {};
+
+      [HooksCollectionSymbol]: HookCollection<T> = {};
 
       pre<TKey extends keyof NonHookProps<T>>(
         p: TKey,
         func: PreHook<T[TKey]>
       ): UnregisterFunc {
-        const col = this[PreCollectionSymbol][p] || [];
-        this[PreCollectionSymbol] = {
-          ...this[PreCollectionSymbol],
-          [p]: [...col, func],
+        const col = this[HooksCollectionSymbol][p] ?? [];
+        const instance: IHookInstance = { type: 'pre', func };
+        this[HooksCollectionSymbol] = {
+          ...this[HooksCollectionSymbol],
+          [p]: [...col, instance],
         };
         return () => {
-          this[PreCollectionSymbol] = {
-            ...this[PreCollectionSymbol],
-            [p]: this[PreCollectionSymbol][p].filter((f) => f !== func),
+          this[HooksCollectionSymbol] = {
+            ...this[HooksCollectionSymbol],
+            [p]: (this[HooksCollectionSymbol][p] as IHookInstance[]).filter(
+              i => i !== instance
+            ),
           };
         };
       }
@@ -86,15 +103,38 @@ export function Hooks(config?: Partial<HooksConfiguration>) {
         p: TKey,
         func: PostHook<T[TKey]>
       ): UnregisterFunc {
-        const col = this[PostCollectionSymbol][p] || [];
-        this[PostCollectionSymbol] = {
-          ...this[PostCollectionSymbol],
-          [p]: [...col, func],
+        const col = this[HooksCollectionSymbol][p] ?? [];
+        const instance: IHookInstance = { type: 'post', func };
+        this[HooksCollectionSymbol] = {
+          ...this[HooksCollectionSymbol],
+          [p]: [...col, instance],
         };
         return () => {
-          this[PostCollectionSymbol] = {
-            ...this[PostCollectionSymbol],
-            [p]: this[PostCollectionSymbol][p].filter((f) => f !== func),
+          this[HooksCollectionSymbol] = {
+            ...this[HooksCollectionSymbol],
+            [p]: (this[HooksCollectionSymbol][p] as IHookInstance[]).filter(
+              i => i !== instance
+            ),
+          };
+        };
+      }
+
+      around<TKey extends keyof NonHookProps<T>>(
+        p: TKey,
+        func: AroundHook<T[TKey]>
+      ): UnregisterFunc {
+        const col = this[HooksCollectionSymbol][p] ?? [];
+        const instance: IHookInstance = { type: 'around', func };
+        this[HooksCollectionSymbol] = {
+          ...this[HooksCollectionSymbol],
+          [p]: [...col, instance],
+        };
+        return () => {
+          this[HooksCollectionSymbol] = {
+            ...this[HooksCollectionSymbol],
+            [p]: (this[HooksCollectionSymbol][p] as IHookInstance[]).filter(
+              i => i !== instance
+            ),
           };
         };
       }
@@ -102,95 +142,109 @@ export function Hooks(config?: Partial<HooksConfiguration>) {
   };
 }
 
-export function hasHooks<T>(obj: unknown): obj is IHooksRegistration<T> {
+export function hasHooks<T>(obj: any): obj is IHooksRegistration<T> {
   return obj[HooksConfigurationSymbol] !== undefined;
 }
 
-function hasHooksInternal<T>(obj: unknown): obj is IHooks<T> {
+function hasHooksInternal<T>(obj: any): obj is IHooks<T> {
   return obj[HooksConfigurationSymbol] !== undefined;
 }
 
-export function HookAsync() {
-  return function (
+export function HookAsync(): any {
+  return function(
     _target: any,
     propertyKey: string,
     descriptor: PropertyDescriptor
   ) {
-    const originalFunc = descriptor.value;
-    descriptor.value = async function (...args: any[]) {
+    const originalFunc: (...args: any[]) => Promise<any> = descriptor.value;
+    descriptor.value = async function(...args: any[]) {
       const context = this;
-      if (hasHooksInternal(context)) {
-        const preFuncs = (context[PreCollectionSymbol][propertyKey] || []) as ((
-          ...a: any[]
-        ) => any)[];
+      if (!hasHooksInternal<any>(context)) {
+        return await Promise.resolve(originalFunc.apply(context, args));
+      }
 
-        const pre = () =>
-          Promise.all(
-            preFuncs.map((func) => Promise.resolve(func.apply(context, args)))
-          );
-
-        const postFuncs = (context[PostCollectionSymbol][propertyKey] ||
-          []) as ((...a: any[]) => any)[];
-
-        const post = (r?: any) =>
-          Promise.all(
-            postFuncs.map((func) =>
-              Promise.resolve()
-                .then(() => func.apply(context, [r, ...args]))
-                .catch((err) => {
+      const middlewares = context[HooksCollectionSymbol][propertyKey] || [];
+      const reduce = (context[HooksConfigurationSymbol].reduce === 'left'
+        ? middlewares.reduce
+        : middlewares.reduceRight
+      ).bind(middlewares);
+      const hooked = reduce((acc, curr) => {
+        switch (curr.type) {
+          case 'pre':
+            return async (...ars: any[]) => {
+              await Promise.resolve(curr.func.apply(context, ars));
+              return await acc.apply(context, ars);
+            };
+          case 'post':
+            return async (...ars: any[]) => {
+              const result = await acc.apply(context, ars);
+              await Promise.resolve()
+                .then(() => curr.func.apply(context, [result, ...ars]))
+                .catch(err => {
                   if (context[HooksConfigurationSymbol].logPostFunctionErrors) {
                     context[HooksConfigurationSymbol].logger(err);
                   }
-                })
-            )
-          );
+                });
+              return result;
+            };
+          case 'around':
+            return async (...ars: any[]) =>
+              await curr.func.apply(context, [acc, ...ars]);
+          default:
+            return acc;
+        }
+      }, originalFunc.bind(context));
 
-        await pre();
-        const result = await originalFunc.apply(context, args);
-        await post(result);
-        return result;
-      }
-      return await Promise.resolve(originalFunc.apply(context, args));
+      return await hooked(...args);
     };
   };
 }
 
-export function Hook() {
-  return function (
+export function Hook(): any {
+  return function(
     _target: any,
     propertyKey: string,
     descriptor: PropertyDescriptor
   ) {
     const originalFunc = descriptor.value;
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function(...args: any[]) {
       const context = this;
-      if (hasHooksInternal(context)) {
-        const preFuncs = (context[PreCollectionSymbol][propertyKey] || []) as ((
-          ...a: any[]
-        ) => any)[];
-
-        const pre = () => preFuncs.forEach((func) => func.apply(context, args));
-
-        const postFuncs = (context[PostCollectionSymbol][propertyKey] ||
-          []) as ((...a: any[]) => any)[];
-
-        const post = (r?: any) =>
-          postFuncs.forEach((func) => {
-            try {
-              func.apply(context, [r, ...args]);
-            } catch (err) {
-              if (context[HooksConfigurationSymbol].logPostFunctionErrors) {
-                context[HooksConfigurationSymbol].logger(err);
-              }
-            }
-          });
-
-        pre();
-        const result = originalFunc.apply(context, args);
-        post(result);
-        return result;
+      if (!hasHooksInternal<any>(context)) {
+        return originalFunc.apply(context, args);
       }
-      return originalFunc.apply(context, args);
+
+      const middlewares = context[HooksCollectionSymbol][propertyKey] || [];
+      const reduce = (context[HooksConfigurationSymbol].reduce === 'left'
+        ? middlewares.reduce
+        : middlewares.reduceRight
+      ).bind(middlewares);
+      const hooked = reduce((acc, curr) => {
+        switch (curr.type) {
+          case 'pre':
+            return (...ars: any[]) => {
+              curr.func.apply(context, ars);
+              return acc.apply(context, ars);
+            };
+          case 'post':
+            return (...ars: any[]) => {
+              const result = acc.apply(context, ars);
+              try {
+                curr.func.apply(context, [result, ...ars]);
+              } catch (err) {
+                if (context[HooksConfigurationSymbol].logPostFunctionErrors) {
+                  context[HooksConfigurationSymbol].logger(err);
+                }
+              }
+              return result;
+            };
+          case 'around':
+            return (...ars: any[]) => curr.func.apply(context, [acc, ...ars]);
+          default:
+            return acc;
+        }
+      }, originalFunc.bind(context));
+
+      return hooked(...args);
     };
   };
 }

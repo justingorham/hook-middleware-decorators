@@ -38,10 +38,18 @@ function postHello(message: string, person: string){
 	console.log('post', message, person)
 }
 
+function aroundHello(func: (person: string)=>string, person: string): string {
+  console.log('before hello', person);
+  const result
+  console.log('after hello', result);
+  return result;
+}
+
 const instance = new ClassWithHooks();
 let helloUnsubscriber = () => {}
 if(hasHooks<ClassWithHooks>(instance)) { // type-guard to ensure the class is decorated with @Hooks
-	helloUnsubscriber = instance.pre('hello', preHello);
+  helloUnsubscriber = instance.around('hello', aroundHello);
+  instance.pre('hello', preHello);
 	instance.post('hello', postHello);
 	instance.pre('helloAsync', preHello);
 	instance.post('helloAsync', postHello);
@@ -60,36 +68,40 @@ if(hasHooks<ClassWithHooks>(instance)) { // type-guard to ensure the class is de
 /**
  * Result:
  *
+ * before hello, world
  * pre, world
  * Hello world
  * post, Hello world, world
+ * after hello, Hello world
  * pre, Earth
  * Hello Earth async
  * post, Hello Earth async, Earth
  * No hook called with stuff
+ * pre, Mars
  * Hello Mars
+ * post, Hello Mars, Mars
  */
 ```
 
 ## Important
 
-The `@Hooks` class decorator adds `pre` and `post` methods to the decorated class. Any methods or properties with the same names in the class definition will be overridden.
+The `@Hooks` class decorator adds `pre`, `post`, and `around` methods to the decorated class. Any methods or properties with the same names in the class definition will be overridden.
 
-If a `pre` function throws an error, the hooked method will throw the error as well. If a `post` function throws an error, the hooked method will not throw the error.
+If a `pre` or `around` function throws an error, the hooked method will throw the error as well. If a `post` function throws an error, the hooked method will not throw the error.
 
-Registering a `pre` or `post` function will result in an unsubscriber being returned. Invoking the unsubscriber will remove the function as a middleware.
+Registering a `pre`, `post`, or `around` function will result in an unsubscriber being returned. Invoking the unsubscriber will remove the function as a middleware.
 
 ## Use Cases
 
 1. Put authorization and validation in `pre` functions
-2. Put metrics in `pre` and `post` functions where applicable
+2. Put metrics in `around` functions where applicable
 3. Put any side effects such as notifications in `post` functions
 
 ## Best Practices
 
-1. Pre and post functions should refrain from mutating any arguments in order to keep behavior predictable.
+1. `pre`, `post`, and `around` functions should refrain from mutating any arguments in order to keep behavior predictable.
 2. Use the `@Hook` decorator for synchronous methods. Make sure middleware functions for synchronous methods are also synchronous.
-3. Use the `@HookAsync` decorator for asynchronous methods. Middleware functions for asynchronous methods can be synchronous or asynchronous. 
+3. Use the `@HookAsync` decorator for asynchronous methods. `pre` and `post` middleware functions for asynchronous methods can be synchronous or asynchronous. `around` middleware functions must be asynchronous
 
 ## Similar Packages
 
