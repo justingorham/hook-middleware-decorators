@@ -5,7 +5,7 @@ Add and remove pre, post, and "around" middleware hooks to class methods on a pe
 ## How To Use
 
 ```typescript
-import { Hooks, Hook, HookAsync hasHooks } from 'hook-middleware-decorators'
+import { Hooks, Hook, HookAsync, hasHooks } from 'hook-middleware-decorators'
 
 @Hooks()
 class ClassWithHooks {
@@ -40,7 +40,7 @@ function postHello(message: string, person: string){
 
 function aroundHello(func: (person: string)=>string, person: string): string {
   console.log('before hello', person);
-  const result
+  const result = func(person);
   console.log('after hello', result);
   return result;
 }
@@ -68,18 +68,18 @@ if(hasHooks<ClassWithHooks>(instance)) { // type-guard to ensure the class is de
 /**
  * Result:
  *
- * before hello, world
- * pre, world
+ * before hello world
+ * pre world
  * Hello world
- * post, Hello world, world
- * after hello, Hello world
- * pre, Earth
+ * post Hello world world
+ * after hello Hello world
+ * pre Earth
  * Hello Earth async
- * post, Hello Earth async, Earth
+ * post Hello Earth async Earth
  * No hook called with stuff
- * pre, Mars
+ * pre Mars
  * Hello Mars
- * post, Hello Mars, Mars
+ * post Hello Mars Mars
  */
 ```
 
