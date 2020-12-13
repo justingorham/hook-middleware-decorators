@@ -1,6 +1,6 @@
 # Hook Middleware Decorators
 
-Add and remove pre and post middleware hooks to class methods on a per class instance basis with the help of class and method decorators.
+Add and remove pre, post, and "around" middleware hooks to class methods on a per class instance basis with the help of class and method decorators.
 
 ## How To Use
 
